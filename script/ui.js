@@ -35,7 +35,6 @@ export function nav(sectionId) {
     .querySelectorAll(".nav-item")
     .forEach((el) => el.classList.remove("active", "text-blue-600"));
 
-  // Mapping ID section ke urutan tombol nav (sesuaikan dengan index.html)
   const ids = [
     "dashboard",
     "presensi",

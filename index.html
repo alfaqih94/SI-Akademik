@@ -5,12 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SI Akad</title>
 
-    <!-- CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body class="bg-gray-50 text-gray-800 font-sans select-none">
-    <!-- LOADING MODAL -->
     <div id="loading-overlay">
       <div class="spinner mb-2"></div>
       <div class="text-blue-600 font-bold animate-pulse" id="loading-text">
@@ -18,7 +16,6 @@
       </div>
     </div>
 
-    <!-- TOAST NOTIFICATION -->
     <div
       id="toast-container"
       class="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg z-[100] hidden transition-opacity duration-300 opacity-0 text-sm font-semibold whitespace-nowrap"
@@ -26,7 +23,6 @@
       <span id="toast-message">Pesan disini</span>
     </div>
 
-    <!-- HEADER -->
     <header
       class="bg-blue-600 text-white p-4 shadow-md sticky top-0 z-50 flex justify-between items-center"
     >
@@ -45,9 +41,7 @@
       </div>
     </header>
 
-    <!-- MAIN CONTENT -->
     <main class="p-4 container mx-auto max-w-md pb-24">
-      <!-- DASHBOARD -->
       <section id="dashboard" class="page-section active">
         <div
           class="bg-white p-4 rounded-xl shadow mb-4 border-l-4 border-blue-500 relative overflow-hidden"
@@ -83,7 +77,6 @@
         </div>
       </section>
 
-      <!-- PRESENSI -->
       <section id="presensi" class="page-section">
         <h2 class="text-xl font-bold mb-4">Input Presensi</h2>
         <div class="bg-white p-4 rounded-lg shadow space-y-3">
@@ -97,7 +90,6 @@
             />
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <!-- onchange dihapus -->
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
                 >Kelas</label
@@ -116,7 +108,6 @@
             </div>
           </div>
 
-          <!-- BUTTON UPDATE -->
           <div class="flex justify-end mt-2">
             <button
               onclick="loadStudentsForPresensi().then(loadPresensiExisting)"
@@ -133,7 +124,6 @@
           </div>
         </div>
 
-        <!-- SUBMIT BUTTON -->
         <button
           id="btn-submit-presensi"
           onclick="submitPresensi()"
@@ -143,7 +133,6 @@
         </button>
       </section>
 
-      <!-- JURNAL -->
       <section id="jurnal" class="page-section">
         <h2 class="text-xl font-bold mb-4">Jurnal Mengajar</h2>
 
@@ -152,7 +141,6 @@
         >
           <input type="hidden" id="jurnal-edit-index" value="-1" />
 
-          <!-- Filter Data -->
           <div class="space-y-3 pb-3 border-b border-dashed border-gray-200">
             <div>
               <label
@@ -185,7 +173,6 @@
             </div>
           </div>
 
-          <!-- Input Content -->
           <div class="space-y-3">
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
@@ -231,7 +218,6 @@
           </button>
         </div>
 
-        <!-- History Container -->
         <div class="mt-6">
           <div class="flex justify-between items-end mb-3">
             <h3 class="font-bold text-gray-700 text-sm">
@@ -247,14 +233,12 @@
         </div>
       </section>
 
-      <!-- PENILAIAN -->
       <section id="penilaian" class="page-section">
         <h2 class="text-xl font-bold mb-4">Input Penilaian</h2>
         <div
           class="bg-white p-4 rounded-lg shadow space-y-3 mb-4 border-l-4 border-purple-500"
         >
           <div class="grid grid-cols-2 gap-2">
-            <!-- onchange dihapus -->
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
                 >Tanggal</label
@@ -264,7 +248,6 @@
                 class="w-full border rounded p-2 text-sm"
               />
             </div>
-            <!-- onchange dihapus -->
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
                 >Urutan</label
@@ -277,7 +260,6 @@
             </div>
           </div>
           <div class="grid grid-cols-2 gap-2">
-            <!-- onchange dihapus -->
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
                 >Kelas</label
@@ -286,7 +268,6 @@
                 class="w-full border rounded p-2 text-sm bg-white"
               ></select>
             </div>
-            <!-- onchange dihapus -->
             <div>
               <label class="block text-xs font-bold text-gray-500 mb-1"
                 >Mapel</label
@@ -296,7 +277,6 @@
               ></select>
             </div>
           </div>
-          <!-- onchange dihapus -->
           <div>
             <label class="block text-xs font-bold text-gray-500 mb-1"
               >Jenis</label
@@ -318,7 +298,6 @@
             class="w-full border rounded p-2 text-sm"
           />
 
-          <!-- NEW BUTTON FOR LOADING NILAI -->
           <div class="flex justify-end mt-2">
             <button
               onclick="loadNilaiData()"
@@ -344,7 +323,6 @@
         </button>
       </section>
 
-      <!-- REKAP -->
       <section id="rekap" class="page-section">
         <h2 class="text-xl font-bold mb-4">Rekap Data</h2>
         <div class="flex space-x-2 mb-4 overflow-x-auto pb-2">
@@ -371,7 +349,6 @@
           </button>
         </div>
 
-        <!-- Filter Rekap -->
         <div
           class="bg-white p-4 rounded-lg shadow mb-4 space-y-3 border border-gray-100"
         >
@@ -413,7 +390,6 @@
         </div>
       </section>
 
-      <!-- ADMIN -->
       <section id="admin" class="page-section">
         <h2 class="text-xl font-bold mb-4">Administrator</h2>
         <div class="grid grid-cols-4 gap-2 mb-4">
@@ -495,7 +471,6 @@
       </section>
     </main>
 
-    <!-- CONFIRMATION MODAL (NEW) -->
     <div
       id="confirm-modal"
       class="fixed inset-0 bg-black bg-opacity-60 z-[70] hidden flex items-center justify-center p-4 backdrop-blur-sm"
@@ -531,7 +506,6 @@
       </div>
     </div>
 
-    <!-- MODAL DETAIL -->
     <div
       id="detail-modal"
       class="fixed inset-0 bg-black bg-opacity-60 z-[50] hidden flex items-center justify-center p-4 backdrop-blur-sm"
@@ -572,7 +546,6 @@
       </div>
     </div>
 
-    <!-- NAV -->
     <nav class="fixed bottom-0 w-full bg-white border-t shadow-lg z-40">
       <div class="flex justify-around items-center h-16 max-w-md mx-auto">
         <button
@@ -620,7 +593,6 @@
       </div>
     </nav>
 
-    <!-- JS MODULE ENTRY POINT -->
     <script type="module" src="script/app.js"></script>
   </body>
 </html>

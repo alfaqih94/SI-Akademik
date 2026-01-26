@@ -1,33 +1,27 @@
 import { runAPI } from "./api.js";
 import { showLoading, hideLoading, showToast, nav, updateClock } from "./ui.js";
 
-// --- STATE MANAGEMENT ---
 let rekapDataCache = {};
 let currentRekapType = "Presensi";
 let currentAdminSheet = "";
 let adminDataCache = [];
 let pendingDeleteIndex = -1;
 
-// --- INITIALIZATION ---
 window.onload = function () {
   updateClock();
   setInterval(updateClock, 1000);
 
-  // Set default date input value to today
   document
     .querySelectorAll('input[type="date"]')
     .forEach((i) => (i.valueAsDate = new Date()));
 
-  // Setup Navigation Listeners
   setupNavigation();
 
-  // Load Initial Data
   refreshDashboard();
   loadDropdowns();
 };
 
 function setupNavigation() {
-  // Hubungkan fungsi global ke window
   window.nav = nav;
   window.refreshDashboard = refreshDashboard;
   window.loadStudentsForPresensi = loadStudentsForPresensi;
@@ -42,7 +36,6 @@ function setupNavigation() {
   window.openDetailModal = openDetailModal;
   window.closeDetailModal = closeDetailModal;
 
-  // Admin Functions
   window.showAdminForm = showAdminForm;
   window.refreshAdminTable = refreshAdminTable;
   window.resetAdminForm = resetAdminForm;
@@ -50,15 +43,12 @@ function setupNavigation() {
   window.editAdminRow = editAdminRow;
   window.deleteAdminRow = deleteAdminRow;
 
-  // New Modal Functions
   window.closeConfirmModal = closeConfirmModal;
   window.executeDelete = executeDelete;
 }
 
-// --- CONFIRMATION MODAL LOGIC ---
 function deleteAdminRow(index) {
   pendingDeleteIndex = index;
-  // Show Modal
   const modal = document.getElementById("confirm-modal");
   if (modal) {
     modal.classList.remove("hidden");
@@ -75,11 +65,9 @@ function closeConfirmModal() {
   pendingDeleteIndex = -1;
 }
 
-// Function called by "Hapus" button in Modal
 async function executeDelete() {
   if (pendingDeleteIndex === -1) return;
 
-  // Safety check: Pastikan data ada di cache
   if (!adminDataCache[pendingDeleteIndex]) {
     showToast("Error: Data cache korup. Refresh halaman.");
     closeConfirmModal();
@@ -88,7 +76,6 @@ async function executeDelete() {
 
   const rowIndex = adminDataCache[pendingDeleteIndex]["_rowIndex"];
 
-  // Safety check: Pastikan _rowIndex valid
   if (rowIndex === undefined || rowIndex === null) {
     showToast("Error: ID Baris tidak ditemukan. Periksa backend.");
     closeConfirmModal();
@@ -104,7 +91,7 @@ async function executeDelete() {
       { sheet: currentAdminSheet, rowIndex: rowIndex },
       true,
     );
-    await refreshAdminTable(); // Tunggu refresh selesai agar data sinkron
+    await refreshAdminTable();
     showToast("Data Berhasil Dihapus");
   } catch (e) {
     showToast("Gagal menghapus: " + e.message);
@@ -113,7 +100,6 @@ async function executeDelete() {
   }
 }
 
-// --- DASHBOARD (UPDATED UI) ---
 async function refreshDashboard() {
   showLoading("Memuat Dashboard...");
   try {
@@ -132,7 +118,6 @@ async function refreshDashboard() {
     let activeSchedule = null;
     let todayHtml = "";
 
-    // --- 1. JADWAL HARI INI ---
     if (!todayJadwal || todayJadwal.length === 0) {
       todayHtml =
         '<div class="p-4 bg-white rounded shadow text-center text-gray-400 italic text-sm">Libur / Tidak ada jadwal</div>';
@@ -147,7 +132,6 @@ async function refreshDashboard() {
         const isActive = currentHm >= h1 * 60 + m1 && currentHm <= h2 * 60 + m2;
         if (isActive) activeSchedule = j;
 
-        // Tampilan Waktu Lebih Jelas (Badge Style)
         const timeBadge = isActive
           ? `bg-green-100 text-green-700 border-green-200`
           : `bg-gray-100 text-gray-600 border-gray-200`;
@@ -166,7 +150,6 @@ async function refreshDashboard() {
     }
     document.getElementById("schedule-list").innerHTML = todayHtml;
 
-    // --- 2. JADWAL SEDANG BERLANGSUNG (REALTIME) ---
     const elCurrent = document.getElementById("current-schedule-container");
     if (activeSchedule) {
       const allJurnal = allJurnalResult;
@@ -178,7 +161,6 @@ async function refreshDashboard() {
             jr.Mapel === activeSchedule.Mapel,
         );
 
-      // Tampilan Jam Besar
       const timeDisplay = `
                 <div class="text-center mb-4 mt-2">
                     <div class="inline-block bg-white/50 px-4 py-2 rounded-lg border border-blue-100">
@@ -190,7 +172,6 @@ async function refreshDashboard() {
                 </div>
             `;
 
-      // Tampilan Jurnal Lengkap
       let journalInfo = `<div class="mt-3 bg-yellow-50 border border-yellow-200 border-dashed rounded p-4 text-center">
                 <p class="text-xs text-gray-500 italic">Belum ada jurnal sebelumnya untuk kelas ini.</p>
             </div>`;
@@ -241,7 +222,6 @@ async function refreshDashboard() {
                 </div>`;
     }
 
-    // --- 3. JADWAL KESELURUHAN ---
     const allScheduleData = await runAPI("getData", { sheet: "Jadwal" });
     const dayOrder = {
       Senin: 1,
@@ -312,12 +292,10 @@ async function loadDropdowns() {
   } catch (e) {}
 }
 
-// --- PRESENSI (UPDATED UI) ---
 async function loadStudentsForPresensi() {
   const kelas = document.getElementById("presensi-kelas").value;
   if (!kelas) return;
 
-  // Reset Tombol ke Default (Simpan) setiap ganti kelas
   const btn = document.getElementById("btn-submit-presensi");
   if (btn) {
     btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Presensi';
@@ -330,7 +308,6 @@ async function loadStudentsForPresensi() {
     const students = await runAPI("getData", { sheet: "Siswa" });
     const filtered = students.filter((s) => s.Kelas == kelas);
 
-    // TAMPILAN BARU UNTUK INPUT PRESENSI
     document.getElementById("presensi-student-list").innerHTML = filtered.length
       ? filtered
           .map(
@@ -379,10 +356,8 @@ async function loadPresensiExisting() {
   try {
     const allPresensi = await runAPI("getData", { sheet: "Presensi" });
 
-    // Filter data yang cocok
     const existing = allPresensi.filter((p) => {
       let pDate = p.Tanggal;
-      // Handle format ISO dari sheet jika ada
       if (pDate && pDate.includes && pDate.includes("T"))
         pDate = pDate.split("T")[0];
       return pDate === tgl && p.Kelas === kelas && p.Mapel === mapel;
@@ -393,7 +368,6 @@ async function loadPresensiExisting() {
       return;
     }
 
-    // Map status ke UI
     const rows = document.querySelectorAll(".student-row");
     let foundCount = 0;
     rows.forEach((row) => {
@@ -408,11 +382,9 @@ async function loadPresensiExisting() {
 
     showToast(`Data dimuat: ${foundCount} siswa.`);
 
-    // Ubah tampilan tombol Simpan menjadi Update
     const btn = document.getElementById("btn-submit-presensi");
     if (btn) {
       btn.innerHTML = '<i class="fas fa-edit mr-2"></i> Update Presensi';
-      // Ubah warna jadi Orange untuk indikasi Edit
       btn.classList.replace("bg-blue-600", "bg-orange-600");
       btn.classList.replace("hover:bg-blue-700", "hover:bg-orange-700");
     }
@@ -440,7 +412,6 @@ async function submitPresensi() {
     showToast("Tersimpan / Diperbarui");
     nav("dashboard");
 
-    // Reset Button Style
     const btn = document.getElementById("btn-submit-presensi");
     if (btn) {
       btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Presensi';
@@ -452,7 +423,6 @@ async function submitPresensi() {
   }
 }
 
-// --- JURNAL (UPDATED LOGIC & UI) ---
 async function loadJurnalData() {
   const tgl = document.getElementById("jurnal-date").value;
   const kelas = document.getElementById("jurnal-kelas").value;
@@ -461,14 +431,12 @@ async function loadJurnalData() {
   if (!tgl || !kelas || !mapel)
     return showToast("Lengkapi Tanggal, Kelas & Mapel");
 
-  // Reset Tombol
   const btn = document.getElementById("btn-submit-jurnal");
   btn.innerHTML = '<i class="fas fa-save mr-2"></i> Kirim Jurnal';
   btn.classList.replace("bg-orange-600", "bg-green-600");
   btn.classList.replace("hover:bg-orange-700", "hover:bg-green-700");
   document.getElementById("jurnal-edit-index").value = "-1";
 
-  // Clear Input
   document.getElementById("jurnal-materi").value = "";
   document.getElementById("jurnal-topik").value = "";
   document.getElementById("jurnal-catatan").value = "";
@@ -477,7 +445,6 @@ async function loadJurnalData() {
   try {
     const data = await runAPI("getData", { sheet: "Jurnal" });
 
-    // 1. Cek Data Existing (Untuk Update)
     const existing = data.find((j) => {
       let jDate = j.Tanggal;
       if (jDate && jDate.includes("T")) jDate = jDate.split("T")[0];
@@ -489,11 +456,11 @@ async function loadJurnalData() {
       document.getElementById("jurnal-topik").value = existing.Topik;
       document.getElementById("jurnal-catatan").value = existing.Catatan;
       document.getElementById("jurnal-edit-index").value =
-        existing["_rowIndex"]; // Simpan ID baris
+        existing["_rowIndex"];
 
       btn.innerHTML = '<i class="fas fa-edit mr-2"></i> Update Jurnal';
       btn.classList.replace("bg-green-600", "bg-orange-600");
-      btn.classList.replace("bg-gray-800", "bg-orange-600"); // Handle first load
+      btn.classList.replace("bg-gray-800", "bg-orange-600");
       btn.classList.replace("hover:bg-green-700", "hover:bg-orange-700");
       showToast("Data ditemukan. Mode Update.");
     } else {
@@ -502,7 +469,6 @@ async function loadJurnalData() {
       showToast("Data baru. Mode Simpan.");
     }
 
-    // 2. Load History Spesifik (3 Terakhir per Kelas & Mapel)
     document.getElementById("jurnal-history-label").textContent =
       `${kelas} - ${mapel}`;
     const historyData = data
@@ -555,8 +521,6 @@ async function submitJurnal() {
         "#jurnal input:not([type=hidden]), #jurnal select, #jurnal textarea",
       )
       .forEach((i) => {
-        // Mapping ID input ke nama kolom di Sheet
-        // ID format: jurnal-namakolom (kecuali Tanggal yang idnya jurnal-date)
         let key = "";
         if (i.id === "jurnal-date") key = "Tanggal";
         else if (i.id === "jurnal-kelas") key = "Kelas";
@@ -571,31 +535,25 @@ async function submitJurnal() {
     const editIndex = document.getElementById("jurnal-edit-index").value;
 
     if (editIndex !== "-1") {
-      // Mode Update
       await runAPI(
         "updateData",
         { sheet: "Jurnal", rowIndex: editIndex, data: data },
         true,
       );
     } else {
-      // Mode Insert
       await runAPI("addData", { sheet: "Jurnal", data: data }, true);
     }
 
     showToast("Jurnal Tersimpan");
 
-    // Refresh data history tanpa reload halaman full
     loadJurnalData();
   } finally {
     hideLoading();
   }
 }
 
-async function loadJurnalHistory() {
-  // Fungsi lama dibiarkan kosong atau dihapus karena sudah diganti loadJurnalData
-}
+async function loadJurnalHistory() {}
 
-// --- PENILAIAN (UPDATED UI & LOGIC) ---
 async function loadNilaiData() {
   const kelas = document.getElementById("nilai-kelas").value;
   const mapel = document.getElementById("nilai-mapel").value;
@@ -605,7 +563,6 @@ async function loadNilaiData() {
   if (!kelas || !mapel || !jenis || !order)
     return showToast("Lengkapi filter Kelas, Mapel, Jenis & Urutan!");
 
-  // Reset tombol submit ke state awal (Simpan)
   const btn = document.getElementById("btn-submit-nilai");
   btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Nilai';
   btn.classList.replace("bg-orange-600", "bg-purple-600");
@@ -620,7 +577,6 @@ async function loadNilaiData() {
 
     const classStudents = students.filter((s) => s.Kelas == kelas);
 
-    // Filter data nilai (Tanggal tidak berpengaruh)
     const existingGrades = allGrades.filter(
       (g) =>
         g.Kelas == kelas &&
@@ -629,11 +585,9 @@ async function loadNilaiData() {
         g.Order == order,
     );
 
-    // Buat map nilai untuk akses cepat
     const gradeMap = {};
     let dataFound = false;
 
-    // Reset catatan ke kosong dulu, agar tidak ada sisa inputan jika data baru
     document.getElementById("nilai-catatan").value = "";
 
     existingGrades.forEach((g) => {
@@ -644,7 +598,6 @@ async function loadNilaiData() {
       dataFound = true;
     });
 
-    // Ubah tombol jadi "Update" jika data ditemukan
     if (dataFound) {
       btn.innerHTML = '<i class="fas fa-edit mr-2"></i> Update Nilai';
       btn.classList.replace("bg-purple-600", "bg-orange-600");
@@ -653,7 +606,6 @@ async function loadNilaiData() {
       showToast("Data belum ada. Mode Simpan Baru.");
     }
 
-    // Warna-warni untuk Avatar
     const colors = [
       "bg-red-100 text-red-600",
       "bg-green-100 text-green-600",
@@ -696,7 +648,6 @@ async function submitPenilaian() {
     ).map((row) => {
       let inputVal = row.querySelector("input").value;
 
-      // Jika kosong, paksa set ke string '0'
       if (inputVal === "" || inputVal === null) inputVal = "0";
 
       return {
@@ -715,7 +666,6 @@ async function submitPenilaian() {
     showToast("Tersimpan / Diperbarui");
     nav("dashboard"); // Kembali ke Dashboard
 
-    // Reset UI tombol setelah simpan
     const btn = document.getElementById("btn-submit-nilai");
     if (btn) {
       btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Nilai';
@@ -723,7 +673,6 @@ async function submitPenilaian() {
       btn.classList.add("hidden");
     }
 
-    // Bersihkan list & form
     const studentList = document.getElementById("nilai-student-list");
     if (studentList)
       studentList.innerHTML =
@@ -736,7 +685,6 @@ async function submitPenilaian() {
   }
 }
 
-// --- REKAP ---
 function setRekapTab(type) {
   currentRekapType = type;
   document.querySelectorAll(".rekap-tab-btn").forEach((btn) => {
@@ -875,7 +823,6 @@ function closeDetailModal() {
   document.getElementById("detail-modal").classList.add("hidden");
 }
 
-// --- ADMIN ---
 async function showAdminForm(sheetName) {
   currentAdminSheet = sheetName;
   document.getElementById("admin-form-title").innerText = "Input " + sheetName;

@@ -1,4 +1,4 @@
-const SHEET_ID = "1X-BxQkAP0HTkNh8vNma0k3yVVL5gy3zyiBWIocK9Jgw"; // Masukkan ID Spreadsheet jika script terpisah dari sheet
+const SHEET_ID = "1X-BxQkAP0HTkNh8vNma0k3yVVL5gy3zyiBWIocK9Jgw";
 
 function getDb() {
   return SHEET_ID
@@ -6,9 +6,6 @@ function getDb() {
     : SpreadsheetApp.getActiveSpreadsheet();
 }
 
-/**
- * HANDLE GET REQUESTS
- */
 function doGet(e) {
   const action = e.parameter.action;
   const sheetName = e.parameter.sheet;
@@ -29,9 +26,6 @@ function doGet(e) {
   return responseJSON(result);
 }
 
-/**
- * HANDLE POST REQUESTS
- */
 function doPost(e) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
@@ -77,9 +71,6 @@ function responseJSON(data) {
     ContentService.MimeType.JSON,
   );
 }
-
-// --- FUNGSI LOGIKA ---
-
 function getData(sheetName) {
   const ss = getDb();
   const sheet = ss.getSheetByName(sheetName);
@@ -101,15 +92,11 @@ function getData(sheetName) {
     return obj;
   });
 }
-
 function deleteData(sheetName, rowIndex) {
   const ss = getDb();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return { success: false, message: "Sheet tidak ditemukan" };
-
-  // rowIndex 0 di data array = Baris 2 di Sheet (karena Header baris 1)
   const actualRow = parseInt(rowIndex) + 2;
-
   try {
     sheet.deleteRow(actualRow);
     return { success: true, message: "Data berhasil dihapus" };
@@ -118,7 +105,6 @@ function deleteData(sheetName, rowIndex) {
   }
 }
 
-// (Fungsi addData, updateData, getDashboardData, dll tetap sama seperti sebelumnya)
 function addData(sheetName, dataObj) {
   const ss = getDb();
   const sheet = ss.getSheetByName(sheetName);
