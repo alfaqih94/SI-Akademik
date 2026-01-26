@@ -6,6 +6,7 @@ let rekapDataCache = {};
 let currentRekapType = "Presensi";
 let currentAdminSheet = "";
 let adminDataCache = [];
+let pendingDeleteIndex = -1;
 
 // --- INITIALIZATION ---
 window.onload = function () {
@@ -23,7 +24,6 @@ window.onload = function () {
   // Load Initial Data
   refreshDashboard();
   loadDropdowns();
-  loadJurnalHistory();
 };
 
 function setupNavigation() {
@@ -31,10 +31,11 @@ function setupNavigation() {
   window.nav = nav;
   window.refreshDashboard = refreshDashboard;
   window.loadStudentsForPresensi = loadStudentsForPresensi;
-  window.loadPresensiExisting = loadPresensiExisting; // NEW FUNCTION
+  window.loadPresensiExisting = loadPresensiExisting;
   window.submitPresensi = submitPresensi;
+  window.loadJurnalData = loadJurnalData;
   window.submitJurnal = submitJurnal;
-  window.loadStudentsForNilai = loadStudentsForNilai;
+  window.loadNilaiData = loadNilaiData;
   window.submitPenilaian = submitPenilaian;
   window.setRekapTab = setRekapTab;
   window.showRekapData = showRekapData;
@@ -48,9 +49,71 @@ function setupNavigation() {
   window.submitAdminData = submitAdminData;
   window.editAdminRow = editAdminRow;
   window.deleteAdminRow = deleteAdminRow;
+
+  // New Modal Functions
+  window.closeConfirmModal = closeConfirmModal;
+  window.executeDelete = executeDelete;
 }
 
-// --- DASHBOARD ---
+// --- CONFIRMATION MODAL LOGIC ---
+function deleteAdminRow(index) {
+  pendingDeleteIndex = index;
+  // Show Modal
+  const modal = document.getElementById("confirm-modal");
+  if (modal) {
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+  }
+}
+
+function closeConfirmModal() {
+  const modal = document.getElementById("confirm-modal");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  }
+  pendingDeleteIndex = -1;
+}
+
+// Function called by "Hapus" button in Modal
+async function executeDelete() {
+  if (pendingDeleteIndex === -1) return;
+
+  // Safety check: Pastikan data ada di cache
+  if (!adminDataCache[pendingDeleteIndex]) {
+    showToast("Error: Data cache korup. Refresh halaman.");
+    closeConfirmModal();
+    return;
+  }
+
+  const rowIndex = adminDataCache[pendingDeleteIndex]["_rowIndex"];
+
+  // Safety check: Pastikan _rowIndex valid
+  if (rowIndex === undefined || rowIndex === null) {
+    showToast("Error: ID Baris tidak ditemukan. Periksa backend.");
+    closeConfirmModal();
+    return;
+  }
+
+  closeConfirmModal();
+
+  showLoading("Menghapus Data...");
+  try {
+    await runAPI(
+      "deleteData",
+      { sheet: currentAdminSheet, rowIndex: rowIndex },
+      true,
+    );
+    await refreshAdminTable(); // Tunggu refresh selesai agar data sinkron
+    showToast("Data Berhasil Dihapus");
+  } catch (e) {
+    showToast("Gagal menghapus: " + e.message);
+  } finally {
+    hideLoading();
+  }
+}
+
+// --- DASHBOARD (UPDATED UI) ---
 async function refreshDashboard() {
   showLoading("Memuat Dashboard...");
   try {
@@ -69,6 +132,7 @@ async function refreshDashboard() {
     let activeSchedule = null;
     let todayHtml = "";
 
+    // --- 1. JADWAL HARI INI ---
     if (!todayJadwal || todayJadwal.length === 0) {
       todayHtml =
         '<div class="p-4 bg-white rounded shadow text-center text-gray-400 italic text-sm">Libur / Tidak ada jadwal</div>';
@@ -82,11 +146,27 @@ async function refreshDashboard() {
           .map(Number);
         const isActive = currentHm >= h1 * 60 + m1 && currentHm <= h2 * 60 + m2;
         if (isActive) activeSchedule = j;
-        todayHtml += `<div class="bg-white p-3 rounded-lg shadow border-l-4 ${isActive ? "border-green-500 bg-green-50" : "border-blue-300"} flex justify-between items-center mb-2"><div><div class="font-bold text-gray-800 text-sm">${j.Mapel}</div><div class="text-xs text-gray-500">${j.Kelas}</div></div><div class="text-right"><div class="text-sm font-mono font-bold text-blue-600">${j["Jam Mulai"]}</div><div class="text-xs text-gray-400 text-[10px]">s.d ${j["Jam Selesai"]}</div></div></div>`;
+
+        // Tampilan Waktu Lebih Jelas (Badge Style)
+        const timeBadge = isActive
+          ? `bg-green-100 text-green-700 border-green-200`
+          : `bg-gray-100 text-gray-600 border-gray-200`;
+
+        todayHtml += `
+                <div class="bg-white p-3 rounded-lg shadow-sm border-l-4 ${isActive ? "border-green-500 bg-green-50" : "border-blue-300"} mb-2">
+                    <div class="flex justify-between items-center mb-1">
+                        <div class="font-bold text-gray-800 text-base">${j.Mapel}</div>
+                        <div class="${timeBadge} border px-2 py-1 rounded text-xs font-mono font-bold">
+                            ${j["Jam Mulai"]} - ${j["Jam Selesai"]}
+                        </div>
+                    </div>
+                    <div class="text-xs text-gray-500 font-semibold"><i class="fas fa-users mr-1"></i> ${j.Kelas}</div>
+                </div>`;
       });
     }
     document.getElementById("schedule-list").innerHTML = todayHtml;
 
+    // --- 2. JADWAL SEDANG BERLANGSUNG (REALTIME) ---
     const elCurrent = document.getElementById("current-schedule-container");
     if (activeSchedule) {
       const allJurnal = allJurnalResult;
@@ -97,14 +177,71 @@ async function refreshDashboard() {
             jr.Kelas === activeSchedule.Kelas &&
             jr.Mapel === activeSchedule.Mapel,
         );
-      const journalInfo = lastEntry
-        ? `<span class="text-gray-700">${lastEntry.Materi}</span>`
-        : '<span class="italic text-gray-400">Belum ada jurnal</span>';
-      elCurrent.innerHTML = `<div class="flex justify-between items-start"><div><p class="text-xl font-bold text-blue-800">${activeSchedule.Mapel}</p><p class="text-sm font-semibold text-gray-600">${activeSchedule.Kelas}</p></div><span class="bg-green-100 text-green-700 px-2 py-1 rounded text-xs font-bold animate-pulse">AKTIF</span></div><div class="mt-3 p-2 bg-blue-50 rounded border border-blue-100"><p class="text-[10px] text-blue-500 uppercase font-bold mb-1">Jurnal Terakhir</p><div class="text-xs line-clamp-2">${journalInfo}</div></div>`;
+
+      // Tampilan Jam Besar
+      const timeDisplay = `
+                <div class="text-center mb-4 mt-2">
+                    <div class="inline-block bg-white/50 px-4 py-2 rounded-lg border border-blue-100">
+                        <div class="text-[10px] text-blue-500 font-bold uppercase tracking-widest mb-1">Waktu Pembelajaran</div>
+                        <div class="text-3xl font-mono font-black text-blue-700 tracking-tight">
+                            ${activeSchedule["Jam Mulai"]} <span class="text-blue-300 text-xl align-middle mx-1">-</span> ${activeSchedule["Jam Selesai"]}
+                        </div>
+                    </div>
+                </div>
+            `;
+
+      // Tampilan Jurnal Lengkap
+      let journalInfo = `<div class="mt-3 bg-yellow-50 border border-yellow-200 border-dashed rounded p-4 text-center">
+                <p class="text-xs text-gray-500 italic">Belum ada jurnal sebelumnya untuk kelas ini.</p>
+            </div>`;
+
+      if (lastEntry) {
+        journalInfo = `
+                <div class="mt-4 bg-white/80 rounded-lg border border-blue-200 overflow-hidden shadow-sm">
+                    <div class="bg-blue-50 px-3 py-2 border-b border-blue-100 flex justify-between items-center">
+                        <span class="text-[10px] font-bold text-blue-700 uppercase tracking-wider"><i class="fas fa-history mr-1"></i> Jurnal Terakhir</span>
+                        <span class="text-[10px] text-gray-500">${new Date(lastEntry.Tanggal).toLocaleDateString("id-ID")}</span>
+                    </div>
+                    <div class="p-3 space-y-3">
+                        <div>
+                            <span class="block text-[9px] text-gray-400 uppercase font-bold mb-0.5">Materi Pokok</span>
+                            <div class="text-sm font-bold text-gray-800 leading-tight">${lastEntry.Materi}</div>
+                        </div>
+                        <div>
+                            <span class="block text-[9px] text-gray-400 uppercase font-bold mb-0.5">Topik / Bahasan</span>
+                            <div class="text-xs text-gray-700 bg-gray-50 p-2 rounded border border-gray-100">${lastEntry.Topik}</div>
+                        </div>
+                        ${
+                          lastEntry.Catatan
+                            ? `
+                        <div>
+                            <span class="block text-[9px] text-gray-400 uppercase font-bold mb-0.5">Catatan</span>
+                            <div class="text-xs italic text-gray-500 border-l-2 border-yellow-400 pl-2">${lastEntry.Catatan}</div>
+                        </div>`
+                            : ""
+                        }
+                    </div>
+                </div>`;
+      }
+
+      elCurrent.innerHTML = `
+                <div class="text-center border-b border-blue-100 pb-3 mb-2">
+                    <p class="text-2xl font-bold text-blue-900">${activeSchedule.Mapel}</p>
+                    <span class="inline-block bg-blue-600 text-white text-xs font-bold px-3 py-1 rounded-full mt-1">${activeSchedule.Kelas}</span>
+                </div>
+                ${timeDisplay}
+                ${journalInfo}
+            `;
     } else {
-      elCurrent.innerHTML = `<div class="text-center py-2"><p class="text-lg font-bold text-gray-400">Tidak ada KBM</p><p class="text-xs text-gray-400">Sedang istirahat atau pulang</p></div>`;
+      elCurrent.innerHTML = `
+                <div class="text-center py-8">
+                    <i class="fas fa-coffee text-4xl text-gray-300 mb-3"></i>
+                    <p class="text-lg font-bold text-gray-500">Tidak ada KBM</p>
+                    <p class="text-xs text-gray-400">Saat ini tidak ada jadwal aktif</p>
+                </div>`;
     }
 
+    // --- 3. JADWAL KESELURUHAN ---
     const allScheduleData = await runAPI("getData", { sheet: "Jadwal" });
     const dayOrder = {
       Senin: 1,
@@ -127,10 +264,21 @@ async function refreshDashboard() {
       lastDay = "";
     sortedAll.forEach((sch) => {
       if (sch.Hari !== lastDay) {
-        allHtml += `<div class="bg-gray-100 px-4 py-2 text-xs font-bold text-gray-600 uppercase mt-1">${sch.Hari}</div>`;
+        allHtml += `<div class="bg-gray-200 px-4 py-2 text-xs font-bold text-gray-700 uppercase mt-2 sticky top-0 border-y border-gray-300">${sch.Hari}</div>`;
         lastDay = sch.Hari;
       }
-      allHtml += `<div class="bg-white px-4 py-3 flex justify-between items-center hover:bg-gray-50"><div class="w-1/4 text-xs font-mono font-semibold text-gray-500">${sch["Jam Mulai"]}</div><div class="w-3/4 pl-2 border-l-2 border-gray-200"><div class="text-sm font-bold text-gray-800">${sch.Mapel}</div><div class="text-xs text-gray-500">${sch.Kelas}</div></div></div>`;
+      allHtml += `
+            <div class="bg-white px-4 py-3 flex justify-between items-center hover:bg-gray-50 border-b last:border-0">
+                <div class="w-1/3">
+                    <div class="text-xs font-mono font-bold text-blue-600 bg-blue-50 inline-block px-2 py-1 rounded border border-blue-100">
+                        ${sch["Jam Mulai"]} - ${sch["Jam Selesai"]}
+                    </div>
+                </div>
+                <div class="w-2/3 pl-2">
+                    <div class="text-sm font-bold text-gray-800">${sch.Mapel}</div>
+                    <div class="text-xs text-gray-500">${sch.Kelas}</div>
+                </div>
+            </div>`;
     });
     document.getElementById("all-schedule-list").innerHTML = allHtml;
   } catch (e) {
@@ -164,7 +312,7 @@ async function loadDropdowns() {
   } catch (e) {}
 }
 
-// --- PRESENSI ---
+// --- PRESENSI (UPDATED UI) ---
 async function loadStudentsForPresensi() {
   const kelas = document.getElementById("presensi-kelas").value;
   if (!kelas) return;
@@ -181,22 +329,39 @@ async function loadStudentsForPresensi() {
   try {
     const students = await runAPI("getData", { sheet: "Siswa" });
     const filtered = students.filter((s) => s.Kelas == kelas);
+
+    // TAMPILAN BARU UNTUK INPUT PRESENSI
     document.getElementById("presensi-student-list").innerHTML = filtered.length
       ? filtered
           .map(
             (s, i) => `
-          <div class="bg-white p-3 rounded shadow flex items-center justify-between student-row" data-name="${s.Nama}">
-            <div class="text-sm font-semibold w-1/3">${s.Nama}</div>
-            <div class="flex space-x-1 w-2/3 justify-end text-[10px] font-bold">
-              <label class="bg-green-100 px-2 py-2 rounded flex items-center cursor-pointer"><input type="radio" name="p-${i}" value="H" checked class="mr-1">H</label>
-              <label class="bg-yellow-100 px-2 py-2 rounded flex items-center cursor-pointer"><input type="radio" name="p-${i}" value="S" class="mr-1">S</label>
-              <label class="bg-blue-100 px-2 py-2 rounded flex items-center cursor-pointer"><input type="radio" name="p-${i}" value="I" class="mr-1">I</label>
-              <label class="bg-red-100 px-2 py-2 rounded flex items-center cursor-pointer"><input type="radio" name="p-${i}" value="A" class="mr-1">A</label>
+          <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 student-row hover:shadow-md transition-shadow duration-200" data-name="${s.Nama}">
+            <div class="text-sm font-bold text-gray-700 w-full sm:w-1/3 flex items-center">
+                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs mr-3 font-bold border border-blue-200 shadow-sm">${s.Nama.substring(0, 2).toUpperCase()}</div>
+                <span class="truncate">${s.Nama}</span>
+            </div>
+            <div class="flex w-full sm:w-2/3 justify-between sm:justify-end gap-2">
+              <label class="cursor-pointer flex-1 sm:flex-none">
+                <input type="radio" name="p-${i}" value="H" checked class="peer sr-only">
+                <div class="w-full sm:w-12 h-10 rounded-lg flex items-center justify-center font-bold text-sm border-2 border-green-100 bg-green-50 text-green-600 peer-checked:bg-green-500 peer-checked:text-white peer-checked:border-green-600 peer-checked:shadow-md transition-all duration-200">H</div>
+              </label>
+              <label class="cursor-pointer flex-1 sm:flex-none">
+                <input type="radio" name="p-${i}" value="S" class="peer sr-only">
+                <div class="w-full sm:w-12 h-10 rounded-lg flex items-center justify-center font-bold text-sm border-2 border-yellow-100 bg-yellow-50 text-yellow-600 peer-checked:bg-yellow-500 peer-checked:text-white peer-checked:border-yellow-600 peer-checked:shadow-md transition-all duration-200">S</div>
+              </label>
+              <label class="cursor-pointer flex-1 sm:flex-none">
+                <input type="radio" name="p-${i}" value="I" class="peer sr-only">
+                <div class="w-full sm:w-12 h-10 rounded-lg flex items-center justify-center font-bold text-sm border-2 border-blue-100 bg-blue-50 text-blue-600 peer-checked:bg-blue-500 peer-checked:text-white peer-checked:border-blue-600 peer-checked:shadow-md transition-all duration-200">I</div>
+              </label>
+              <label class="cursor-pointer flex-1 sm:flex-none">
+                <input type="radio" name="p-${i}" value="A" class="peer sr-only">
+                <div class="w-full sm:w-12 h-10 rounded-lg flex items-center justify-center font-bold text-sm border-2 border-red-100 bg-red-50 text-red-600 peer-checked:bg-red-500 peer-checked:text-white peer-checked:border-red-600 peer-checked:shadow-md transition-all duration-200">A</div>
+              </label>
             </div>
           </div>`,
           )
           .join("")
-      : '<div class="text-center">Tidak ada siswa</div>';
+      : '<div class="text-center p-8 text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">Belum ada data siswa di kelas ini</div>';
   } finally {
     hideLoading();
   }
@@ -287,49 +452,166 @@ async function submitPresensi() {
   }
 }
 
-// --- JURNAL ---
+// --- JURNAL (UPDATED LOGIC & UI) ---
+async function loadJurnalData() {
+  const tgl = document.getElementById("jurnal-date").value;
+  const kelas = document.getElementById("jurnal-kelas").value;
+  const mapel = document.getElementById("jurnal-mapel").value;
+
+  if (!tgl || !kelas || !mapel)
+    return showToast("Lengkapi Tanggal, Kelas & Mapel");
+
+  // Reset Tombol
+  const btn = document.getElementById("btn-submit-jurnal");
+  btn.innerHTML = '<i class="fas fa-save mr-2"></i> Kirim Jurnal';
+  btn.classList.replace("bg-orange-600", "bg-green-600");
+  btn.classList.replace("hover:bg-orange-700", "hover:bg-green-700");
+  document.getElementById("jurnal-edit-index").value = "-1";
+
+  // Clear Input
+  document.getElementById("jurnal-materi").value = "";
+  document.getElementById("jurnal-topik").value = "";
+  document.getElementById("jurnal-catatan").value = "";
+
+  showLoading("Cek Data & Riwayat...");
+  try {
+    const data = await runAPI("getData", { sheet: "Jurnal" });
+
+    // 1. Cek Data Existing (Untuk Update)
+    const existing = data.find((j) => {
+      let jDate = j.Tanggal;
+      if (jDate && jDate.includes("T")) jDate = jDate.split("T")[0];
+      return jDate === tgl && j.Kelas === kelas && j.Mapel === mapel;
+    });
+
+    if (existing) {
+      document.getElementById("jurnal-materi").value = existing.Materi;
+      document.getElementById("jurnal-topik").value = existing.Topik;
+      document.getElementById("jurnal-catatan").value = existing.Catatan;
+      document.getElementById("jurnal-edit-index").value =
+        existing["_rowIndex"]; // Simpan ID baris
+
+      btn.innerHTML = '<i class="fas fa-edit mr-2"></i> Update Jurnal';
+      btn.classList.replace("bg-green-600", "bg-orange-600");
+      btn.classList.replace("bg-gray-800", "bg-orange-600"); // Handle first load
+      btn.classList.replace("hover:bg-green-700", "hover:bg-orange-700");
+      showToast("Data ditemukan. Mode Update.");
+    } else {
+      btn.classList.replace("bg-gray-800", "bg-green-600");
+      btn.classList.replace("bg-orange-600", "bg-green-600");
+      showToast("Data baru. Mode Simpan.");
+    }
+
+    // 2. Load History Spesifik (3 Terakhir per Kelas & Mapel)
+    document.getElementById("jurnal-history-label").textContent =
+      `${kelas} - ${mapel}`;
+    const historyData = data
+      .filter((j) => j.Kelas === kelas && j.Mapel === mapel)
+      .sort((a, b) => new Date(b.Tanggal) - new Date(a.Tanggal))
+      .slice(0, 3);
+
+    const historyContainer = document.getElementById("jurnal-history");
+    if (historyData.length === 0) {
+      historyContainer.innerHTML =
+        '<div class="text-center p-4 bg-gray-50 border border-dashed rounded text-xs text-gray-400">Belum ada riwayat jurnal untuk kelas ini.</div>';
+    } else {
+      historyContainer.innerHTML = historyData
+        .map(
+          (h) => `
+                <div class="bg-white rounded-lg border-l-4 border-blue-500 shadow-sm p-3 relative overflow-hidden">
+                    <div class="flex justify-between items-start mb-2 border-b border-gray-100 pb-2">
+                        <div class="text-[10px] font-bold text-gray-400 uppercase tracking-wider">${new Date(h.Tanggal).toLocaleDateString("id-ID", { weekday: "short", day: "numeric", month: "short" })}</div>
+                        <div class="px-2 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold">${h.Mapel}</div>
+                    </div>
+                    <div class="space-y-1">
+                        <div>
+                            <div class="text-[10px] font-bold text-gray-500 uppercase">Materi</div>
+                            <div class="text-sm font-bold text-gray-800 leading-tight">${h.Materi}</div>
+                        </div>
+                        <div>
+                            <div class="text-[10px] font-bold text-gray-500 uppercase mt-1">Topik</div>
+                            <div class="text-xs text-gray-600 bg-gray-50 p-1.5 rounded border border-gray-100">${h.Topik}</div>
+                        </div>
+                        ${h.Catatan ? `<div class="mt-1 pt-1 border-t border-dashed border-gray-200 text-xs italic text-gray-500"><i class="fas fa-sticky-note mr-1 text-yellow-400"></i>${h.Catatan}</div>` : ""}
+                    </div>
+                </div>
+            `,
+        )
+        .join("");
+    }
+  } finally {
+    hideLoading();
+  }
+}
+
 async function submitJurnal() {
   if (!document.getElementById("jurnal-kelas").value)
-    return showToast("Lengkapi data");
+    return showToast("Pilih data dulu!");
   showLoading("Menyimpan...");
   try {
     let data = {};
     document
       .querySelectorAll(
-        "#form-jurnal input, #form-jurnal select, #form-jurnal textarea",
+        "#jurnal input:not([type=hidden]), #jurnal select, #jurnal textarea",
       )
-      .forEach((i) => (data[i.name] = i.value));
-    await runAPI("addData", { sheet: "Jurnal", data: data }, true);
-    showToast("Tersimpan");
-    document.getElementById("form-jurnal").reset();
-    document
-      .querySelectorAll('input[type="date"]')
-      .forEach((i) => (i.valueAsDate = new Date()));
-    loadJurnalHistory();
+      .forEach((i) => {
+        // Mapping ID input ke nama kolom di Sheet
+        // ID format: jurnal-namakolom (kecuali Tanggal yang idnya jurnal-date)
+        let key = "";
+        if (i.id === "jurnal-date") key = "Tanggal";
+        else if (i.id === "jurnal-kelas") key = "Kelas";
+        else if (i.id === "jurnal-mapel") key = "Mapel";
+        else if (i.id === "jurnal-materi") key = "Materi";
+        else if (i.id === "jurnal-topik") key = "Topik";
+        else if (i.id === "jurnal-catatan") key = "Catatan";
+
+        if (key) data[key] = i.value;
+      });
+
+    const editIndex = document.getElementById("jurnal-edit-index").value;
+
+    if (editIndex !== "-1") {
+      // Mode Update
+      await runAPI(
+        "updateData",
+        { sheet: "Jurnal", rowIndex: editIndex, data: data },
+        true,
+      );
+    } else {
+      // Mode Insert
+      await runAPI("addData", { sheet: "Jurnal", data: data }, true);
+    }
+
+    showToast("Jurnal Tersimpan");
+
+    // Refresh data history tanpa reload halaman full
+    loadJurnalData();
   } finally {
     hideLoading();
   }
 }
 
 async function loadJurnalHistory() {
-  try {
-    const data = await runAPI("getData", { sheet: "Jurnal" });
-    document.getElementById("jurnal-history").innerHTML = data
-      .slice(-2)
-      .reverse()
-      .map(
-        (j) =>
-          `<div class="bg-white border-l-4 border-purple-500 p-2 rounded shadow text-xs"><div class="font-bold">${j.Kelas} - ${j.Mapel}</div><div class="text-gray-500">${new Date(j.Tanggal).toLocaleDateString("id-ID")} | ${j.Materi}</div></div>`,
-      )
-      .join("");
-  } catch (e) {}
+  // Fungsi lama dibiarkan kosong atau dihapus karena sudah diganti loadJurnalData
 }
 
-// --- PENILAIAN ---
-async function loadStudentsForNilai() {
+// --- PENILAIAN (UPDATED UI & LOGIC) ---
+async function loadNilaiData() {
   const kelas = document.getElementById("nilai-kelas").value;
-  if (!kelas) return;
-  showLoading("Memuat Nilai...");
+  const mapel = document.getElementById("nilai-mapel").value;
+  const jenis = document.getElementById("nilai-jenis").value;
+  const order = document.getElementById("nilai-order").value;
+
+  if (!kelas || !mapel || !jenis || !order)
+    return showToast("Lengkapi filter Kelas, Mapel, Jenis & Urutan!");
+
+  // Reset tombol submit ke state awal (Simpan)
+  const btn = document.getElementById("btn-submit-nilai");
+  btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Nilai';
+  btn.classList.replace("bg-orange-600", "bg-purple-600");
+  btn.classList.remove("hidden");
+
+  showLoading("Memuat & Cek Data...");
   try {
     const [students, allGrades] = await Promise.all([
       runAPI("getData", { sheet: "Siswa" }),
@@ -337,10 +619,8 @@ async function loadStudentsForNilai() {
     ]);
 
     const classStudents = students.filter((s) => s.Kelas == kelas);
-    const mapel = document.getElementById("nilai-mapel").value;
-    const jenis = document.getElementById("nilai-jenis").value;
-    const order = document.getElementById("nilai-order").value;
 
+    // Filter data nilai (Tanggal tidak berpengaruh)
     const existingGrades = allGrades.filter(
       (g) =>
         g.Kelas == kelas &&
@@ -348,19 +628,61 @@ async function loadStudentsForNilai() {
         g.Jenis == jenis &&
         g.Order == order,
     );
+
+    // Buat map nilai untuk akses cepat
     const gradeMap = {};
+    let dataFound = false;
+
+    // Reset catatan ke kosong dulu, agar tidak ada sisa inputan jika data baru
+    document.getElementById("nilai-catatan").value = "";
+
     existingGrades.forEach((g) => {
       gradeMap[g["Nama Siswa"]] = g.Nilai;
-      if (g.Catatan) document.getElementById("nilai-catatan").value = g.Catatan;
+      if (g.Catatan) {
+        document.getElementById("nilai-catatan").value = g.Catatan;
+      }
+      dataFound = true;
     });
 
+    // Ubah tombol jadi "Update" jika data ditemukan
+    if (dataFound) {
+      btn.innerHTML = '<i class="fas fa-edit mr-2"></i> Update Nilai';
+      btn.classList.replace("bg-purple-600", "bg-orange-600");
+      showToast("Data lama ditemukan. Mode Update.");
+    } else {
+      showToast("Data belum ada. Mode Simpan Baru.");
+    }
+
+    // Warna-warni untuk Avatar
+    const colors = [
+      "bg-red-100 text-red-600",
+      "bg-green-100 text-green-600",
+      "bg-blue-100 text-blue-600",
+      "bg-yellow-100 text-yellow-600",
+      "bg-purple-100 text-purple-600",
+      "bg-pink-100 text-pink-600",
+      "bg-indigo-100 text-indigo-600",
+      "bg-teal-100 text-teal-600",
+    ];
+
     document.getElementById("nilai-student-list").innerHTML = classStudents
-      .map((s) => {
+      .map((s, i) => {
         const val = gradeMap[s.Nama] !== undefined ? gradeMap[s.Nama] : "";
-        return `<div class="p-2 rounded shadow flex items-center justify-between student-nilai-row ${val !== "" ? "bg-green-50" : ""}" data-name="${s.Nama}"><span class="text-sm font-semibold w-1/2">${s.Nama}</span><input type="number" value="${val}" placeholder="Nilai" class="w-1/3 border rounded p-2 text-right"></div>`;
+        const colorClass = colors[i % colors.length];
+        return `
+            <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 student-nilai-row hover:shadow-md transition-all duration-200" data-name="${s.Nama}">
+                <div class="flex items-center w-2/3 overflow-hidden">
+                    <div class="w-10 h-10 rounded-full ${colorClass} flex-shrink-0 flex items-center justify-center text-sm font-bold mr-3 border border-white shadow-sm">
+                        ${s.Nama.substring(0, 2).toUpperCase()}
+                    </div>
+                    <div class="text-sm font-bold text-gray-700 truncate">${s.Nama}</div>
+                </div>
+                <div class="w-1/3">
+                    <input type="number" value="${val}" placeholder="0" min="0" max="100" class="w-full border-2 border-gray-100 rounded-lg p-2 text-center font-mono font-bold text-lg focus:border-purple-500 focus:ring-2 focus:ring-purple-200 outline-none transition-all placeholder-gray-300 text-gray-800 bg-gray-50 focus:bg-white">
+                </div>
+            </div>`;
       })
       .join("");
-    document.getElementById("btn-submit-nilai").classList.remove("hidden");
   } finally {
     hideLoading();
   }
@@ -369,9 +691,15 @@ async function loadStudentsForNilai() {
 async function submitPenilaian() {
   showLoading("Menyimpan...");
   try {
-    const data = Array.from(document.querySelectorAll(".student-nilai-row"))
-      .filter((r) => r.querySelector("input").value !== "")
-      .map((row) => ({
+    const data = Array.from(
+      document.querySelectorAll(".student-nilai-row"),
+    ).map((row) => {
+      let inputVal = row.querySelector("input").value;
+
+      // Jika kosong, paksa set ke string '0'
+      if (inputVal === "" || inputVal === null) inputVal = "0";
+
+      return {
         Tanggal: document.getElementById("nilai-date").value,
         Kelas: document.getElementById("nilai-kelas").value,
         Mapel: document.getElementById("nilai-mapel").value,
@@ -379,12 +707,30 @@ async function submitPenilaian() {
         Order: document.getElementById("nilai-order").value,
         Catatan: document.getElementById("nilai-catatan").value,
         "Nama Siswa": row.getAttribute("data-name"),
-        Nilai: row.querySelector("input").value,
-      }));
+        Nilai: inputVal,
+      };
+    });
 
     await runAPI("upsertGrades", { data: data }, true);
-    showToast("Tersimpan");
-    nav("rekap");
+    showToast("Tersimpan / Diperbarui");
+    nav("dashboard"); // Kembali ke Dashboard
+
+    // Reset UI tombol setelah simpan
+    const btn = document.getElementById("btn-submit-nilai");
+    if (btn) {
+      btn.innerHTML = '<i class="fas fa-save mr-2"></i> Simpan Nilai';
+      btn.classList.replace("bg-orange-600", "bg-purple-600");
+      btn.classList.add("hidden");
+    }
+
+    // Bersihkan list & form
+    const studentList = document.getElementById("nilai-student-list");
+    if (studentList)
+      studentList.innerHTML =
+        '<p class="text-center text-gray-400 text-sm italic mt-8">Pilih filter dan klik Muat Data.</p>';
+
+    const catatanInput = document.getElementById("nilai-catatan");
+    if (catatanInput) catatanInput.value = "";
   } finally {
     hideLoading();
   }
@@ -627,25 +973,6 @@ function editAdminRow(index) {
     document.getElementById("adm-m2").value = m2;
   }
   document.getElementById("admin").scrollIntoView();
-}
-
-async function deleteAdminRow(index) {
-  if (!confirm("Hapus data?")) return;
-  showLoading("Menghapus...");
-  try {
-    await runAPI(
-      "deleteData",
-      {
-        sheet: currentAdminSheet,
-        rowIndex: adminDataCache[index]["_rowIndex"],
-      },
-      true,
-    );
-    refreshAdminTable();
-    showToast("Terhapus");
-  } finally {
-    hideLoading();
-  }
 }
 
 function resetAdminForm() {

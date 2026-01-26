@@ -1,13 +1,4 @@
-/**
- * BACKEND: Code.gs (API MODE)
- * Deploy ini sebagai Web App:
- * 1. Klik "Deploy" > "New Deployment"
- * 2. Select type: "Web App"
- * 3. Execute as: "Me" (Saya)
- * 4. Who has access: "Anyone" (Siapa saja) -> PENTING agar frontend luar bisa akses
- */
-
-const SHEET_ID = ""; // Masukkan ID Spreadsheet jika script terpisah dari sheet
+const SHEET_ID = "1X-BxQkAP0HTkNh8vNma0k3yVVL5gy3zyiBWIocK9Jgw"; // Masukkan ID Spreadsheet jika script terpisah dari sheet
 
 function getDb() {
   return SHEET_ID
@@ -16,13 +7,11 @@ function getDb() {
 }
 
 /**
- * HANDLE GET REQUESTS (Read Data)
- * Tidak butuh LockService karena hanya membaca.
+ * HANDLE GET REQUESTS
  */
 function doGet(e) {
   const action = e.parameter.action;
   const sheetName = e.parameter.sheet;
-
   let result = {};
 
   try {
@@ -41,13 +30,10 @@ function doGet(e) {
 }
 
 /**
- * HANDLE POST REQUESTS (Create, Update, Delete)
- * Menggunakan LockService untuk mencegah data bentrok (Concurrency Control).
+ * HANDLE POST REQUESTS
  */
 function doPost(e) {
   const lock = LockService.getScriptLock();
-  // Tunggu maksimal 10 detik untuk mendapatkan giliran edit
-  // Jika server sangat sibuk, dia akan return error timeout
   if (!lock.tryLock(10000)) {
     return responseJSON({
       success: false,
@@ -69,34 +55,30 @@ function doPost(e) {
     } else if (action === "updateData") {
       result = updateData(params.sheet, params.rowIndex, params.data);
     } else if (action === "deleteData") {
-      result = deleteData(params.sheet, params.rowIndex);
+      result = deleteData(params.sheet, params.rowIndex); // Pastikan ini ada
     } else if (action === "submitPresensiBatch") {
       result = submitPresensiBatch(params.data);
     } else if (action === "upsertGrades") {
       result = upsertGrades(params.data);
     } else {
-      result = { success: false, message: "Unknown action" };
+      result = { success: false, message: "Unknown action: " + action };
     }
   } catch (err) {
     result = { success: false, message: err.toString() };
   } finally {
-    // Selalu lepaskan lock, sukses ataupun gagal
     lock.releaseLock();
   }
 
   return responseJSON(result);
 }
 
-/**
- * Helper untuk return JSON
- */
 function responseJSON(data) {
   return ContentService.createTextOutput(JSON.stringify(data)).setMimeType(
     ContentService.MimeType.JSON,
   );
 }
 
-// --- FUNGSI LOGIKA (DATA ACCESS LAYER) ---
+// --- FUNGSI LOGIKA ---
 
 function getData(sheetName) {
   const ss = getDb();
@@ -106,6 +88,7 @@ function getData(sheetName) {
   if (data.length === 0) return [];
   const headers = data.shift();
   return data.map((row, idx) => {
+    // PENTING: _rowIndex harus ada agar frontend tahu baris mana yang diedit/hapus
     let obj = { _rowIndex: idx };
     headers.forEach((header, index) => {
       let val = row[index];
@@ -119,11 +102,27 @@ function getData(sheetName) {
   });
 }
 
-function addData(sheetName, dataObj) {
+function deleteData(sheetName, rowIndex) {
   const ss = getDb();
   const sheet = ss.getSheetByName(sheetName);
   if (!sheet) return { success: false, message: "Sheet tidak ditemukan" };
 
+  // rowIndex 0 di data array = Baris 2 di Sheet (karena Header baris 1)
+  const actualRow = parseInt(rowIndex) + 2;
+
+  try {
+    sheet.deleteRow(actualRow);
+    return { success: true, message: "Data berhasil dihapus" };
+  } catch (e) {
+    return { success: false, message: "Gagal menghapus: " + e.toString() };
+  }
+}
+
+// (Fungsi addData, updateData, getDashboardData, dll tetap sama seperti sebelumnya)
+function addData(sheetName, dataObj) {
+  const ss = getDb();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { success: false, message: "Sheet tidak ditemukan" };
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   let row = [];
   headers.forEach((header) => {
@@ -139,7 +138,6 @@ function updateData(sheetName, rowIndex, dataObj) {
   const sheet = ss.getSheetByName(sheetName);
   const actualRow = parseInt(rowIndex) + 2;
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-
   let row = [];
   headers.forEach((header) => {
     if (header === "Timestamp") row.push(new Date());
@@ -147,13 +145,6 @@ function updateData(sheetName, rowIndex, dataObj) {
   });
   sheet.getRange(actualRow, 1, 1, row.length).setValues([row]);
   return { success: true, message: "Data berhasil diperbarui" };
-}
-
-function deleteData(sheetName, rowIndex) {
-  const ss = getDb();
-  const sheet = ss.getSheetByName(sheetName);
-  sheet.deleteRow(parseInt(rowIndex) + 2);
-  return { success: true, message: "Data berhasil dihapus" };
 }
 
 function getDashboardData() {
@@ -170,21 +161,57 @@ function getDashboardData() {
 function submitPresensiBatch(dataList) {
   const ss = getDb();
   const sheet = ss.getSheetByName("Presensi");
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  let rowsToAppend = [];
-  dataList.forEach((data) => {
-    let row = [];
-    headers.forEach((h) => {
-      if (h === "Timestamp") row.push(new Date());
-      else row.push(data[h] || "");
-    });
-    rowsToAppend.push(row);
+  const lastRow = sheet.getLastRow();
+  const lastCol = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  const h = {};
+  headers.forEach((col, i) => (h[col] = i));
+
+  let values = [];
+  if (lastRow > 1)
+    values = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+
+  const rowMap = new Map();
+  values.forEach((row, i) => {
+    let tgl = row[h["Tanggal"]];
+    if (tgl instanceof Date)
+      tgl = Utilities.formatDate(
+        tgl,
+        ss.getSpreadsheetTimeZone(),
+        "yyyy-MM-dd",
+      );
+    const key = `${tgl}|${row[h["Kelas"]]}|${row[h["Mapel"]]}|${row[h["Siswa"]]}`;
+    rowMap.set(key, i + 2);
   });
-  if (rowsToAppend.length > 0)
+
+  let rowsToAppend = [];
+  dataList.forEach((d) => {
+    const key = `${d.Tanggal}|${d.Kelas}|${d.Mapel}|${d.Siswa}`;
+    if (rowMap.has(key)) {
+      const rowNum = rowMap.get(key);
+      if (h["Status"] !== undefined)
+        sheet.getRange(rowNum, h["Status"] + 1).setValue(d.Status);
+      if (h["Timestamp"] !== undefined)
+        sheet.getRange(rowNum, h["Timestamp"] + 1).setValue(new Date());
+    } else {
+      let row = [];
+      headers.forEach((head) => {
+        if (head === "Timestamp") row.push(new Date());
+        else row.push(d[head] || "");
+      });
+      rowsToAppend.push(row);
+    }
+  });
+
+  if (rowsToAppend.length > 0) {
     sheet
       .getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length)
       .setValues(rowsToAppend);
-  return { success: true };
+  }
+  return {
+    success: true,
+    message: "Data presensi berhasil disimpan/diperbarui",
+  };
 }
 
 function upsertGrades(grades) {
@@ -223,12 +250,7 @@ function upsertGrades(grades) {
       rowsToAppend.push(newRow);
     }
   });
-  if (rowsToAppend.length > 1 && rowsToAppend.length > 0) {
-    // Fix: Check > 1 was potentially limiting, changed to check data existence
-    sheet
-      .getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length)
-      .setValues(rowsToAppend);
-  } else if (rowsToAppend.length > 0) {
+  if (rowsToAppend.length > 0) {
     sheet
       .getRange(sheet.getLastRow() + 1, 1, rowsToAppend.length, headers.length)
       .setValues(rowsToAppend);
