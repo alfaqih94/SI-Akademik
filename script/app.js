@@ -313,8 +313,7 @@ async function loadStudentsForPresensi() {
           .map(
             (s, i) => `
           <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 student-row hover:shadow-md transition-shadow duration-200" data-name="${s.Nama}">
-            <div class="text-sm font-bold text-gray-700 w-full sm:w-1/3 flex items-center">
-                <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs mr-3 font-bold border border-blue-200 shadow-sm">${s.Nama.substring(0, 2).toUpperCase()}</div>
+            <div class="text-xs font-semibold text-gray-700 w-full sm:w-1/3 flex items-center
                 <span class="truncate">${s.Nama}</span>
             </div>
             <div class="flex w-full sm:w-2/3 justify-between sm:justify-end gap-2">
@@ -624,9 +623,7 @@ async function loadNilaiData() {
         return `
             <div class="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between gap-3 student-nilai-row hover:shadow-md transition-all duration-200" data-name="${s.Nama}">
                 <div class="flex items-center w-2/3 overflow-hidden">
-                    <div class="w-10 h-10 rounded-full ${colorClass} flex-shrink-0 flex items-center justify-center text-sm font-bold mr-3 border border-white shadow-sm">
-                        ${s.Nama.substring(0, 2).toUpperCase()}
-                    </div>
+                   
                     <div class="text-sm font-bold text-gray-700 truncate">${s.Nama}</div>
                 </div>
                 <div class="w-1/3">
